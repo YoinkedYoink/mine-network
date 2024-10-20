@@ -1,11 +1,36 @@
 import socket
 import struct
+import zlib
 #from packetbuilder import packetbuilder #I'm having really big issues with how python uses bytes
 
 HOST = "localhost"
 PORT = 25565
 
 handshakestatus = bytes([0x10, 0x00, 0xff, 0x05, 0x09, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x63, 0xDD, 0x01])
+
+def waituntilpacket(bit=0x00, position=0):
+    while True:
+        check = bytearray(s.recv(1024))
+        if check[position] == bit:
+            break
+    return check
+
+
+def removepacketlength(packet=bytearray):
+    count = 0
+    for i in range(len(packet)):
+        binary = bin(int(packet[i]))[2:].zfill(8)
+        print(binary)
+        if binary[:1] == "0":
+            print(i+1)
+            count = i+1
+            break
+        else:
+            continue
+    return count
+
+
+
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
@@ -15,7 +40,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     # print(str(s.recv(1024)))
 
-    #enter login status
+    #enter login mode
     s.send(bytearray([0x10, 0x00, 0xff, 0x05, 0x09, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x63, 0xDD, 0x02]))
     #start login username and UUID
     s.send(bytearray([0x18, 0x00, 0x06, 0x63, 0x6f, 0x6f, 0x6c, 0x69, 0x6f, 0x65, 0xB0, 0xFF, 0x3E, 0x4C, 0x4A, 0x2B, 0x1E, 0x65, 0xB0, 0xFF, 0x3E, 0x4C, 0x4A, 0x2B, 0x1E]))
@@ -27,10 +52,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.send(bytearray([0x02, 0x00, 0x03]))
     #get required resource packs
     
-    while True:
-        resourcepacks = bytearray(s.recv(1024))
-        if resourcepacks[2] == 0x0e:
-            break
+    resourcepacks = waituntilpacket(0x0e, 2)
     print(resourcepacks)
 
     #send same packet back with 0x07 instead lol
@@ -39,11 +61,22 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     #in configuration mode
     while True:
-        packet = s.recv(1024)
-        if len(packet) >= 2 and packet[1] == 0x00: # 0x00 at pos 2 means uncompressed
+        packet = bytearray(s.recv(2097151))
+        length = removepacketlength(packet)
+        packet = packet[length:]
+
+        if len(packet) >= 2 and packet[0] > 0x00:
+            try:
+                #print(packet)
+                remove = removepacketlength(packet)
+                uncompressed = zlib.decompress(packet[remove:], zlib.MAX_WBITS|32)
+                print(str(uncompressed))
+            except:
+                print("!!!!!!!!ERROR!!!!!!!")
+        if len(packet) >= 2 and packet[0] == 0x00: # 0x00 at pos 2 means uncompressed
             print(str(packet))
             #wait until finish config sent
-            if packet == bytes([0x02, 0x00, 0x03]):
+            if packet[1] == 0x03:
                 #send acknowledge and go into play mode
                 s.send(bytes([0x02, 0x00, 0x03]))
                 print("sent fin conf")
@@ -53,16 +86,31 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     #in play mode :DDDD
     while True:
-        packet = s.recv(1024)
-        if len(packet) >= 2 and packet[1] == 0x00:
-            #print(str(packet))
-            if packet[2] == 0x26: #solving keep alive packets :DDDD
+        packet = bytearray(s.recv(2097151))
+        length = removepacketlength(packet)
+        packet = packet[length:]
+
+        if len(packet) >= 2 and packet[0] > 0x00:
+            try:
+                remove = removepacketlength(packet)
+                uncompressed = zlib.decompress(packet[remove:], zlib.MAX_WBITS|32)
+                f = open("./uncompacket.txt", "a")
+                print(str(uncompressed), file=f)
+            except:
+                f = open("./errorpacket.txt", "a")
+                print(str(packet)+ "\n\n", file = f)
+                f.close()
+                print("!!!!!!!!!!!!!!!!!!!ERROR!!!!!!!!!!!!!!!!!!!!!!!!")
+                continue
+        elif len(packet) >= 2 and packet[0] == 0x00:
+            print(str(packet))
+            if packet[1] == 0x26: #solving keep alive packets :DDDD
                 print("Got keep alive")
                 print(str(packet))
-                response = bytes([0x0a, 0x00, 0x18]) + packet[3:]
+                response = bytes([0x0a, 0x00, 0x18]) + packet[2:]
                 s.send(response)
 
-        elif len(packet) < 2 and len(packet) > 0:
-            continue
-            #print(str(packet))
+        else:
+            print(str(packet))
+
 
