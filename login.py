@@ -1,6 +1,7 @@
 import socket
 import struct
 import zlib
+from identifypacket import identify
 #from packetbuilder import packetbuilder #I'm having really big issues with how python uses bytes
 
 HOST = "localhost"
@@ -20,9 +21,9 @@ def removepacketlength(packet=bytearray):
     count = 0
     for i in range(len(packet)):
         binary = bin(int(packet[i]))[2:].zfill(8)
-        print(binary)
+        #print(binary)
         if binary[:1] == "0":
-            print(i+1)
+            #print(i+1)
             count = i+1
             break
         else:
@@ -70,11 +71,18 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 #print(packet)
                 remove = removepacketlength(packet)
                 uncompressed = zlib.decompress(packet[remove:], zlib.MAX_WBITS|32)
-                print(str(uncompressed))
+                f = open("./uncompacket.txt", "a")
+                #print(str(uncompressed), file=f)
+                f.close()
             except:
-                print("!!!!!!!!ERROR!!!!!!!")
+                f = open("./errorpacket.txt", "a")
+                #print(str(packet)+ "\n\n", file = f)
+                f.close()
+                print("!!!!!!!!!!!!!!!!!!!ERROR!!!!!!!!!!!!!!!!!!!!!!!!")
+                f.close()
+                continue
         if len(packet) >= 2 and packet[0] == 0x00: # 0x00 at pos 2 means uncompressed
-            print(str(packet))
+            #print(str(packet))
             #wait until finish config sent
             if packet[1] == 0x03:
                 #send acknowledge and go into play mode
@@ -85,6 +93,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             print(str(packet))
 
     #in play mode :DDDD
+    #try send comple login packet to spawn
+    s.send(bytearray([0x03, 0x00, 0x09, 0x01]))
     while True:
         packet = bytearray(s.recv(2097151))
         length = removepacketlength(packet)
@@ -96,21 +106,24 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 uncompressed = zlib.decompress(packet[remove:], zlib.MAX_WBITS|32)
                 f = open("./uncompacket.txt", "a")
                 print(str(uncompressed), file=f)
+                f.close()
             except:
                 f = open("./errorpacket.txt", "a")
-                print(str(packet)+ "\n\n", file = f)
+                #print(str(packet)+ "\n\n", file = f)
                 f.close()
                 print("!!!!!!!!!!!!!!!!!!!ERROR!!!!!!!!!!!!!!!!!!!!!!!!")
+                f.close()
                 continue
         elif len(packet) >= 2 and packet[0] == 0x00:
-            print(str(packet))
+            #print(str(packet))
+            print(identify.play(packet[1:]))
             if packet[1] == 0x26: #solving keep alive packets :DDDD
-                print("Got keep alive")
-                print(str(packet))
-                response = bytes([0x0a, 0x00, 0x18]) + packet[2:]
+                print("Got Keep ALive")
+                print(packet)
+                response = bytearray([0x0a, 0x00, 0x18]) + packet[2:]
+                print(response)
                 s.send(response)
 
         else:
-            print(str(packet))
-
-
+            continue
+            #print(str(packet))
